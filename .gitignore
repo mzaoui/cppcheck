@@ -27,6 +27,9 @@ build/
 gui/debug/
 gui/release/
 gui/temp/
+# Eclipse generated files
+.cproject
+.project
 # Other (generated) GUI files
 gui/Makefile
 gui/Makefile.debug
