@@ -69,7 +69,7 @@ Compiling
             g++ -o cppcheck -lpcre -DHAVE_RULES -Ilib -Iexternals cli/*.cpp lib/*.cpp externals/tinyxml/*.cpp
     mingw
     =====
-        make LDFLAGS=-lshlwapi
+        make LIBS=-lshlwapi
 
 Cross compiling Win32 (CLI) version of Cppcheck in Linux
 
