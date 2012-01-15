@@ -142,6 +142,11 @@ unsigned int CppCheck::processFile()
 {
     exitcode = 0;
 
+    // only show debug warnings for C/C++ source files (don't fix
+    // debug warnings for java/c#/etc files)
+    if (!Path::acceptFile(_filename))
+        _settings.debugwarnings = false;
+
     // TODO: Should this be moved out to its own function so all the files can be
     // analysed before any files are checked?
     if (_settings.test_2_pass && _settings._jobs == 1) {
@@ -222,7 +227,7 @@ unsigned int CppCheck::processFile()
 
             cfg = *it;
             Timer t("Preprocessor::getcode", _settings._showtime, &S_timerResults);
-            const std::string codeWithoutCfg = Preprocessor::getcode(filedata, *it, _filename, &_settings, &_errorLogger);
+            const std::string codeWithoutCfg = preprocessor.getcode(filedata, *it, _filename);
             t.Stop();
 
             // If only errors are printed, print filename after the check
@@ -283,7 +288,7 @@ void CppCheck::analyseFile(std::istream &fin, const std::string &filename)
     std::list<std::string> configurations;
     std::string filedata = "";
     preprocessor.preprocess(fin, filedata, configurations, filename, _settings._includePaths);
-    const std::string code = Preprocessor::getcode(filedata, "", filename, &_settings, &_errorLogger);
+    const std::string code = preprocessor.getcode(filedata, "", filename);
 
     if (_settings.checkConfiguration) {
         return;
@@ -429,23 +434,23 @@ void CppCheck::checkFile(const std::string &code, const char FileName[])
             }
         }
 #endif
-    } catch (const Token &tok) {
-        // Catch exception from Token class
-        const std::string fixedpath = Path::toNativeSeparators(_tokenizer.file(&tok));
+    } catch (const InternalError &e) {
         std::list<ErrorLogger::ErrorMessage::FileLocation> locationList;
-
         ErrorLogger::ErrorMessage::FileLocation loc2;
         loc2.setfile(Path::toNativeSeparators(FileName));
         locationList.push_back(loc2);
-
         ErrorLogger::ErrorMessage::FileLocation loc;
-        loc.line = tok.linenr();
-        loc.setfile(fixedpath);
+        if (e.token) {
+            loc.line = e.token->linenr();
+            const std::string fixedpath = Path::toNativeSeparators(_tokenizer.file(e.token));
+            loc.setfile(fixedpath);
+        } else {
+            loc.setfile(_tokenizer.getSourceFilePath());
+        }
         locationList.push_back(loc);
-
         const ErrorLogger::ErrorMessage errmsg(locationList,
                                                Severity::error,
-                                               "Internal error. Token::Match called with varid 0.",
+                                               e.errorMessage,
                                                "cppcheckError",
                                                false);
 

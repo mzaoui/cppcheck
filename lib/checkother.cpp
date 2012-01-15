@@ -1342,7 +1342,7 @@ void CheckOther::checkWrongPrintfScanfArguments()
                 percent = false;
 
                 bool _continue = false;
-                while (i != formatString.end() && !std::isalpha(*i)) {
+                while (i != formatString.end() && *i != ']' && !std::isalpha(*i)) {
                     if (*i == '*') {
                         if (scan)
                             _continue = true;
@@ -2160,53 +2160,61 @@ void CheckOther::zerodivError(const Token *tok)
 //---------------------------------------------------------------------------
 void CheckOther::checkMathFunctions()
 {
-    for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
-        if (tok->varId() == 0 && Token::Match(tok, "log|log10 ( %num% )")) {
-            bool isNegative = MathLib::isNegative(tok->strAt(2));
-            bool isInt = MathLib::isInt(tok->strAt(2));
-            bool isFloat = MathLib::isFloat(tok->strAt(2));
-            if (isNegative && isInt && MathLib::toLongNumber(tok->strAt(2)) <= 0) {
-                mathfunctionCallError(tok); // case log(-2)
-            } else if (isNegative && isFloat && MathLib::toDoubleNumber(tok->strAt(2)) <= 0.) {
-                mathfunctionCallError(tok); // case log(-2.0)
-            } else if (!isNegative && isFloat && MathLib::toDoubleNumber(tok->strAt(2)) <= 0.) {
-                mathfunctionCallError(tok); // case log(0.0)
-            } else if (!isNegative && isInt && MathLib::toLongNumber(tok->strAt(2)) <= 0) {
-                mathfunctionCallError(tok); // case log(0)
-            }
-        }
+    const SymbolDatabase *db = _tokenizer->getSymbolDatabase();
 
-        // acos( x ), asin( x )  where x is defined for intervall [-1,+1], but not beyound
-        else if (tok->varId() == 0 &&
-                 Token::Match(tok, "acos|asin ( %num% )") &&
-                 std::fabs(MathLib::toDoubleNumber(tok->strAt(2))) > 1.0) {
-            mathfunctionCallError(tok);
-        }
-        // sqrt( x ): if x is negative the result is undefined
-        else if (tok->varId() == 0 &&
-                 Token::Match(tok, "sqrt|sqrtf|sqrtl ( %num% )") &&
-                 MathLib::isNegative(tok->strAt(2))) {
-            mathfunctionCallError(tok);
-        }
-        // atan2 ( x , y): x and y can not be zero, because this is mathematically not defined
-        else if (tok->varId() == 0 &&
-                 Token::Match(tok, "atan2 ( %num% , %num% )") &&
-                 MathLib::isNullValue(tok->strAt(2)) &&
-                 MathLib::isNullValue(tok->strAt(4))) {
-            mathfunctionCallError(tok, 2);
-        }
-        // fmod ( x , y) If y is zero, then either a range error will occur or the function will return zero (implementation-defined).
-        else if (tok->varId() == 0 &&
-                 Token::Match(tok, "fmod ( %num% , %num% )") &&
-                 MathLib::isNullValue(tok->strAt(4))) {
-            mathfunctionCallError(tok, 2);
-        }
-        // pow ( x , y) If x is zero, and y is negative --> division by zero
-        else if (tok->varId() == 0 &&
-                 Token::Match(tok, "pow ( %num% , %num% )") &&
-                 MathLib::isNullValue(tok->strAt(2))  &&
-                 MathLib::isNegative(tok->strAt(4))) {
-            mathfunctionCallError(tok, 2);
+    std::list<Scope>::const_iterator scope;
+    for (scope = db->scopeList.begin(); scope != db->scopeList.end(); ++scope) {
+        if (scope->type != Scope::eFunction)
+            continue;
+
+        for (const Token *tok = scope->classStart; tok && tok != scope->classEnd; tok = tok->next()) {
+            if (tok->varId() == 0 && Token::Match(tok, "log|log10 ( %num% )")) {
+                bool isNegative = MathLib::isNegative(tok->strAt(2));
+                bool isInt = MathLib::isInt(tok->strAt(2));
+                bool isFloat = MathLib::isFloat(tok->strAt(2));
+                if (isNegative && isInt && MathLib::toLongNumber(tok->strAt(2)) <= 0) {
+                    mathfunctionCallError(tok); // case log(-2)
+                } else if (isNegative && isFloat && MathLib::toDoubleNumber(tok->strAt(2)) <= 0.) {
+                    mathfunctionCallError(tok); // case log(-2.0)
+                } else if (!isNegative && isFloat && MathLib::toDoubleNumber(tok->strAt(2)) <= 0.) {
+                    mathfunctionCallError(tok); // case log(0.0)
+                } else if (!isNegative && isInt && MathLib::toLongNumber(tok->strAt(2)) <= 0) {
+                    mathfunctionCallError(tok); // case log(0)
+                }
+            }
+
+            // acos( x ), asin( x )  where x is defined for intervall [-1,+1], but not beyound
+            else if (tok->varId() == 0 &&
+                     Token::Match(tok, "acos|asin ( %num% )") &&
+                     std::fabs(MathLib::toDoubleNumber(tok->strAt(2))) > 1.0) {
+                mathfunctionCallError(tok);
+            }
+            // sqrt( x ): if x is negative the result is undefined
+            else if (tok->varId() == 0 &&
+                     Token::Match(tok, "sqrt|sqrtf|sqrtl ( %num% )") &&
+                     MathLib::isNegative(tok->strAt(2))) {
+                mathfunctionCallError(tok);
+            }
+            // atan2 ( x , y): x and y can not be zero, because this is mathematically not defined
+            else if (tok->varId() == 0 &&
+                     Token::Match(tok, "atan2 ( %num% , %num% )") &&
+                     MathLib::isNullValue(tok->strAt(2)) &&
+                     MathLib::isNullValue(tok->strAt(4))) {
+                mathfunctionCallError(tok, 2);
+            }
+            // fmod ( x , y) If y is zero, then either a range error will occur or the function will return zero (implementation-defined).
+            else if (tok->varId() == 0 &&
+                     Token::Match(tok, "fmod ( %num% , %num% )") &&
+                     MathLib::isNullValue(tok->strAt(4))) {
+                mathfunctionCallError(tok, 2);
+            }
+            // pow ( x , y) If x is zero, and y is negative --> division by zero
+            else if (tok->varId() == 0 &&
+                     Token::Match(tok, "pow ( %num% , %num% )") &&
+                     MathLib::isNullValue(tok->strAt(2))  &&
+                     MathLib::isNegative(tok->strAt(4))) {
+                mathfunctionCallError(tok, 2);
+            }
         }
     }
 }
@@ -3058,15 +3066,12 @@ void CheckOther::unsignedPositiveError(const Token *tok, const std::string &varn
 {
     if (inconclusive) {
         reportInconclusiveError(tok, Severity::style, "unsignedPositive",
-                                "Checking if unsigned variable '" + varname + "' is positive is always true. This might be a false warning.\n"
-                                "Checking if unsigned variable '" + varname + "' is positive is always true. "
-                                "An unsigned variable will always be positive so it is either pointless or "
-                                "an error to check if it is. It's not known if the used constant is a "
+                                "An unsigned variable '" + varname + "' can't be negative so it is unnecessary to test it. This might be a false warning.\n"
+                                "An unsigned variable '" + varname + "' can't be negative so it is unnecessary to test it. "
+                                "It's not known if the used constant is a "
                                 "template parameter or not and therefore this message might be a false warning");
     } else {
         reportError(tok, Severity::style, "unsignedPositive",
-                    "Checking if unsigned variable '" + varname + "' is positive is always true.\n"
-                    "An unsigned variable will always be positive so it is either pointless or "
-                    "an error to check if it is.");
+                    "An unsigned variable '" + varname + "' can't be negative so it is unnecessary to test it.");
     }
 }

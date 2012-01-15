@@ -1,6 +1,6 @@
 TEMPLATE = app
 TARGET = cppcheck-gui
-CONFIG += warn_on
+CONFIG += warn_on debug
 DEPENDPATH += . \
     ../lib
 INCLUDEPATH += . \
@@ -30,7 +30,8 @@ FORMS = about.ui \
         projectfile.ui \
         resultsview.ui \
         settings.ui \
-        stats.ui
+        stats.ui \
+        selectfilesdialog.ui
 
 TRANSLATIONS =  cppcheck_de.ts \
                 cppcheck_en.ts \
@@ -79,7 +80,8 @@ HEADERS += aboutdialog.h \
            txtreport.h \
            xmlreport.h \
            xmlreportv1.h \
-           xmlreportv2.h
+           xmlreportv2.h \
+           selectfilesdialog.h
 
 SOURCES += aboutdialog.cpp \
            application.cpp \
@@ -110,7 +112,8 @@ SOURCES += aboutdialog.cpp \
            txtreport.cpp \
            xmlreport.cpp \
            xmlreportv1.cpp \
-           xmlreportv2.cpp
+           xmlreportv2.cpp \
+           selectfilesdialog.cpp
 
 win32 {
     DEFINES += _CRT_SECURE_NO_WARNINGS

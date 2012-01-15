@@ -20,7 +20,19 @@
 #include <vector>
 #include <sstream>
 #include <cstring>
+#include <cctype>
 #include "path.h"
+
+/** Is the filesystem case insensitive? */
+static bool caseInsensitiveFilesystem()
+{
+#ifdef _WIN32
+    return true;
+#else
+    // TODO: Non-windows filesystems might be case insensitive
+    return false;
+#endif
+}
 
 std::string Path::toNativeSeparators(std::string path)
 {
@@ -107,6 +119,13 @@ bool Path::sameFileName(const std::string &fname1, const std::string &fname2)
 #endif
 }
 
+// This wrapper exists because Sun's CC does not allow a static_cast
+// from extern "C" int(*)(int) to int(*)(int).
+static int tolowerWrapper(int c)
+{
+    return std::tolower(c);
+}
+
 std::string Path::removeQuotationMarks(std::string path)
 {
     path.erase(std::remove(path.begin(), path.end(), '\"'), path.end());
@@ -119,6 +138,80 @@ std::string Path::getFilenameExtension(const std::string &path)
     if (dotLocation == std::string::npos)
         return "";
 
-    const std::string extension = path.substr(dotLocation);
+    std::string extension = path.substr(dotLocation);
+    if (caseInsensitiveFilesystem()) {
+        // on a case insensitive filesystem the case doesn't matter so
+        // let's return the extension in lowercase
+        std::transform(extension.begin(), extension.end(), extension.begin(), tolowerWrapper);
+    }
     return extension;
 }
+
+std::string Path::getFilenameExtensionInLowerCase(const std::string &path)
+{
+    std::string extension = getFilenameExtension(path);
+    std::transform(extension.begin(), extension.end(), extension.begin(), tolowerWrapper);
+    return extension;
+}
+
+bool Path::isC(const std::string &path)
+{
+    // In unix, ".C" is concidered C++ file
+    const std::string extension = getFilenameExtension(path);
+    if (extension == ".c") {
+        return true;
+    }
+
+    return false;
+}
+
+bool Path::isCPP(const std::string &path)
+{
+    const std::string extension = getFilenameExtensionInLowerCase(path);
+    if (extension == ".cpp" ||
+        extension == ".cxx" ||
+        extension == ".cc" ||
+        extension == ".c++" ||
+        extension == ".tpp" ||
+        extension == ".txx") {
+        return true;
+    }
+
+    // In unix, ".C" is concidered C++ file
+    if (getFilenameExtension(path) == ".C") {
+        return true;
+    }
+
+    return false;
+}
+
+bool Path::isJava(const std::string &path)
+{
+    const std::string extension = getFilenameExtensionInLowerCase(path);
+    if (extension == ".java") {
+        return true;
+    }
+
+    return false;
+}
+
+bool Path::isCSharp(const std::string &path)
+{
+    const std::string extension = getFilenameExtensionInLowerCase(path);
+    if (extension == ".cs") {
+        return true;
+    }
+
+    return false;
+}
+
+bool Path::acceptFile(const std::string &filename)
+{
+    if (Path::isCPP(filename) ||
+        Path::isC(filename)) {
+        return true;
+    }
+
+    return false;
+}
+

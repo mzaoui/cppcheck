@@ -25,8 +25,11 @@
 #include <set>
 #include <list>
 #include <string>
+#include <vector>
 
 class Token;
+class ErrorLogger;
+class Settings;
 
 
 /// @addtogroup Core
@@ -81,6 +84,79 @@ public:
      * @return list of template instantiations
      */
     static std::list<Token *> simplifyTemplatesGetTemplateInstantiations(Token *tokens);
+
+    /**
+     * simplify template instantiations (use default argument values)
+     * @param templates list of template declarations
+     * @param templateInstantiations list of template instantiations
+     */
+    static void simplifyTemplatesUseDefaultArgumentValues(const std::list<Token *> &templates,
+            const std::list<Token *> &templateInstantiations);
+
+    /**
+     * Match template declaration/instantiation
+     * @param instance template instantiation
+     * @param name name of template
+     * @param numberOfArguments number of template arguments
+     * @param patternAfter pattern that must match the tokens after the ">"
+     * @return match => true
+     */
+    static bool simplifyTemplatesInstantiateMatch(const Token *instance, const std::string &name, size_t numberOfArguments, const char patternAfter[]);
+
+    /**
+     * Match template declaration/instantiation
+     * @param tok The ">" token e.g. before "class"
+     * @return -1 to bail out or positive integer to identity the position
+     * of the template name.
+     */
+    static int simplifyTemplatesGetTemplateNamePosition(const Token *tok);
+
+    static void addtoken2(Token ** token, const char str[], const unsigned int lineno, const unsigned int fileno);
+    static void addtoken2(Token ** token, const Token * tok, const unsigned int lineno, const unsigned int fileno);
+    static void simplifyTemplatesExpandTemplate(
+        Token *_tokens,
+        Token **_tokensBack,
+        const Token *tok,
+        const std::string &name,
+        std::vector<const Token *> &typeParametersInDeclaration,
+        const std::string &newName,
+        std::vector<const Token *> &typesUsedInTemplateInstantion,
+        std::list<Token *> &templateInstantiations);
+
+    /**
+     * Simplify templates : expand all instantiatiations for a template
+     * @todo It seems that inner templates should be instantiated recursively
+     * @param tok token where the template declaration begins
+     * @param templateInstantiations a list of template usages (not necessarily just for this template)
+     * @param expandedtemplates all templates that has been expanded so far. The full names are stored.
+     */
+    static void simplifyTemplateInstantions(
+        Token *_tokens,
+        Token **_tokensBack,
+        ErrorLogger *_errorLogger,
+        const Settings *_settings,
+        const std::vector<std::string> &files,
+        const Token *tok,
+        std::list<Token *> &templateInstantiations,
+        std::set<std::string> &expandedtemplates);
+
+    /**
+     * Simplify templates
+     */
+    static void simplifyTemplates(
+        Token *_tokens,
+        Token **_tokensBack,
+        ErrorLogger *_errorLogger,
+        const Settings *_settings,
+        const std::vector<std::string> &_files,
+        bool &_codeWithTemplates);
+
+    /**
+     * Simplify constant calculations such as "1+2" => "3"
+     * @return true if modifications to token-list are done.
+     *         false if no modifications are done.
+     */
+    static bool simplifyCalculations(Token *_tokens);
 };
 
 /// @}

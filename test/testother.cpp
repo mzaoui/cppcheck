@@ -209,13 +209,13 @@ private:
         settings.experimental = true;
 
         // Preprocess file..
-        Preprocessor preprocessor(&settings, this);
+        SimpleSuppressor logger(settings, this);
+        Preprocessor preprocessor(&settings, &logger);
         std::list<std::string> configurations;
         std::string filedata = "";
         std::istringstream fin(precode);
         preprocessor.preprocess(fin, filedata, configurations, filename, settings._includePaths);
-        SimpleSuppressor logger(settings, this);
-        const std::string code = Preprocessor::getcode(filedata, "", filename, &settings, &logger);
+        const std::string code = preprocessor.getcode(filedata, "", filename);
 
         // Tokenize..
         Tokenizer tokenizer(&settings, &logger);
@@ -929,6 +929,9 @@ private:
               "}");
         ASSERT_EQUALS("", errout.str());
 
+        // #3473 - no warning if "log" is a variable
+        check("Fred::Fred() : log(0) { }");
+        ASSERT_EQUALS("", errout.str());
 
         // acos
         check("void foo()\n"
@@ -2079,6 +2082,7 @@ private:
               "    scanf(\"%1u%1u\", &foo, bar());\n"
               "    scanf(\"%*1x %1x %29s\", &count, KeyName);\n" // #3373
               "    fscanf(f, \"%7ms\", &ref);\n" // #3461
+              "    sscanf(ip_port, \"%*[^:]:%d\", &port);\n" // #3468
               "}");
         ASSERT_EQUALS("", errout.str());
 
@@ -4149,14 +4153,14 @@ private:
             "  for(unsigned char i = 10; i >= 0; i--)"
             "    printf(\"%u\", i);\n"
             "}");
-        ASSERT_EQUALS("[test.cpp:2]: (style) Checking if unsigned variable 'i' is positive is always true.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (style) An unsigned variable 'i' can't be negative so it is unnecessary to test it.\n", errout.str());
 
         check_signOfUnsignedVariable(
             "void foo(bool b) {\n"
             "  for(unsigned int i = 10; b || i >= 0; i--)"
             "    printf(\"%u\", i);\n"
             "}");
-        ASSERT_EQUALS("[test.cpp:2]: (style) Checking if unsigned variable 'i' is positive is always true.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (style) An unsigned variable 'i' can't be negative so it is unnecessary to test it.\n", errout.str());
 
         check_signOfUnsignedVariable(
             "bool foo(unsigned int x) {\n"
@@ -4196,7 +4200,7 @@ private:
             "    return true;\n"
             "  return false;\n"
             "}");
-        ASSERT_EQUALS("[test.cpp:2]: (style) Checking if unsigned variable 'x' is positive is always true.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (style) An unsigned variable 'x' can't be negative so it is unnecessary to test it.\n", errout.str());
 
         check_signOfUnsignedVariable(
             "bool foo(int x) {\n"
@@ -4245,7 +4249,7 @@ private:
             "    return true;\n"
             "  return false;\n"
             "}");
-        ASSERT_EQUALS("[test.cpp:2]: (style) Checking if unsigned variable 'x' is positive is always true.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (style) An unsigned variable 'x' can't be negative so it is unnecessary to test it.\n", errout.str());
 
         check_signOfUnsignedVariable(
             "bool foo(int x, bool y) {\n"
@@ -4294,7 +4298,7 @@ private:
             "    return true;\n"
             "  return false;\n"
             "}");
-        ASSERT_EQUALS("[test.cpp:2]: (style) Checking if unsigned variable 'x' is positive is always true.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (style) An unsigned variable 'x' can't be negative so it is unnecessary to test it.\n", errout.str());
 
         check_signOfUnsignedVariable(
             "bool foo(int x, bool y) {\n"
@@ -4343,7 +4347,7 @@ private:
             "    return true;\n"
             "  return false;\n"
             "}");
-        ASSERT_EQUALS("[test.cpp:2]: (style) Checking if unsigned variable 'x' is positive is always true.\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:2]: (style) An unsigned variable 'x' can't be negative so it is unnecessary to test it.\n", errout.str());
 
         check_signOfUnsignedVariable(
             "bool foo(int x, bool y) {\n"

@@ -86,12 +86,12 @@ public:
     void preprocess(std::istream &srcCodeStream, std::string &processedFile, std::list<std::string> &resultConfigurations, const std::string &filename, const std::list<std::string> &includePaths);
 
     /** Just read the code into a string. Perform simple cleanup of the code */
-    std::string read(std::istream &istr, const std::string &filename, Settings *settings);
+    std::string read(std::istream &istr, const std::string &filename);
 
     /**
      * Get preprocessed code for a given configuration
      */
-    static std::string getcode(const std::string &filedata, const std::string &cfg, const std::string &filename, const Settings *settings, ErrorLogger *errorLogger);
+    std::string getcode(const std::string &filedata, const std::string &cfg, const std::string &filename);
 
     /**
      * simplify condition
@@ -99,7 +99,7 @@ public:
      * @param condition The condition to simplify
      * @param match if true, 'defined(A)' is replaced with 0 if A is not defined
      */
-    static void simplifyCondition(const std::map<std::string, std::string> &variables, std::string &condition, bool match);
+    void simplifyCondition(const std::map<std::string, std::string> &variables, std::string &condition, bool match);
 
     /**
      * preprocess all whitespaces
@@ -137,12 +137,12 @@ protected:
 
     /**
      * Remove comments from code. This should only be called from read().
+     * If there are inline suppressions, the _settings member is modified
      * @param str Code processed by read().
      * @param filename filename
-     * @param settings Settings. If there are inline suppressions these will be added to the settings
      * @return code without comments
      */
-    std::string removeComments(const std::string &str, const std::string &filename, Settings *settings);
+    std::string removeComments(const std::string &str, const std::string &filename);
 
     /**
      * Cleanup 'if 0' from the code
@@ -205,7 +205,7 @@ public:
      * @param def condition
      * @return result when evaluating the condition
      */
-    static bool match_cfg_def(const std::map<std::string, std::string> &cfg, std::string def);
+    bool match_cfg_def(const std::map<std::string, std::string> &cfg, std::string def);
 
     static void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings);
 

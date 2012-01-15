@@ -54,9 +54,11 @@ private:
         TEST_CASE(tokenize20);  // replace C99 _Bool => bool
         TEST_CASE(tokenize21);  // tokenize 0x0E-7
         TEST_CASE(tokenize22);  // special marker $ from preprocessor
+        TEST_CASE(tokenize23);  // tokenize "return - __LINE__;"
 
         // don't freak out when the syntax is wrong
-        TEST_CASE(wrong_syntax);
+        TEST_CASE(wrong_syntax1);
+        TEST_CASE(wrong_syntax2);
         TEST_CASE(wrong_syntax_if_macro);  // #2518 - if MACRO()
 
         TEST_CASE(minus);
@@ -341,6 +343,7 @@ private:
         TEST_CASE(bitfields9); // ticket #2706
         TEST_CASE(bitfields10);
         TEST_CASE(bitfields11); // ticket #2845 (segmentation fault)
+        TEST_CASE(bitfields12); // ticket #3485 (segmentation fault)
 
         TEST_CASE(microsoftMFC);
         TEST_CASE(microsoftMemory);
@@ -611,7 +614,11 @@ private:
         ASSERT_EQUALS("a b", tokenizeAndStringify("a$b"));
     }
 
-    void wrong_syntax() {
+    void tokenize23() { // tokenize 'return - __LINE__' correctly
+        ASSERT_EQUALS("return -1 ;", tokenizeAndStringify("return - __LINE__;"));
+    }
+
+    void wrong_syntax1() {
         {
             errout.str("");
             const std::string code("TR(kvmpio, PROTO(int rw), ARGS(rw), TP_(aa->rw;))");
@@ -640,6 +647,18 @@ private:
             tokenizeAndStringify(code.c_str(), true);
             ASSERT_EQUALS("[test.cpp:1]: (debug) Failed to parse 'typedef B :: C ( A :: * f ) ( ) ;'. The checking continues anyway.\n", errout.str());
         }
+    }
+
+    void wrong_syntax2() {   // #3504
+        const char code[] = "void f() {\n"
+                            "    X<int> x;\n"
+                            "    Y<int, int, int, int, int, char> y;\n"
+                            "}\n"
+                            "\n"
+                            "void G( template <typename T> class (j) ) {}";
+
+        // don't segfault..
+        tokenizeAndStringify(code);
     }
 
     void wrong_syntax_if_macro() {
@@ -5234,6 +5253,8 @@ private:
         //with unhandled MACRO() code
         ASSERT_EQUALS(" void f(){ MACRO( ab: b=0;, foo)}", labels_("void f() { MACRO(ab: b=0;, foo)}"));
         ASSERT_EQUALS(" void f(){ MACRO( bar, ab:{&(* b. x)=0;})}", labels_("void f() { MACRO(bar, ab: {&(*b.x)=0;})}"));
+        //don't crash with garbage code
+        ASSERT_EQUALS(" switch(){ case}", labels_("switch(){case}"));
     }
 
     // Check simplifyInitVar
@@ -5684,6 +5705,11 @@ private:
         ASSERT_EQUALS("", errout.str());
     }
 
+    void bitfields12() { // ticket #3485 (segmentation fault)
+        const char code[] = "{a:1;};\n";
+        ASSERT_EQUALS("{ } ;", tokenizeAndStringify(code,false));
+    }
+
     void microsoftMFC() {
         const char code1[] = "class MyDialog : public CDialog { DECLARE_MESSAGE_MAP() private: CString text; };";
         ASSERT_EQUALS("class MyDialog : public CDialog { private: CString text ; } ;", tokenizeAndStringify(code1,false,true,Settings::Win32A));
@@ -5874,6 +5900,8 @@ private:
                       tokenizeAndStringify("int f(int a) { return 0 * a; }", true));
         ASSERT_EQUALS("bool f ( int i ) { switch ( i ) { case 15 : ; return true ; } }",
                       tokenizeAndStringify("bool f(int i) { switch (i) { case 10 + 5: return true; } }", true));
+        // ticket #3512 - Don't crash on garbage code
+        ASSERT_EQUALS("p = const", tokenizeAndStringify("1 *p = const", true));
     }
 
     void simplifyCompoundAssignment() {

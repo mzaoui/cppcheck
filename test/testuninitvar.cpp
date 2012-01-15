@@ -527,6 +527,13 @@ private:
                        "    return x() ? i : 0;\n"
                        "}\n");
         TODO_ASSERT_EQUALS("[test.cpp:2]: (error) Uninitialized variable: i\n", "", errout.str());
+
+        // Ticket #3480 - Don't crash garbage code
+        checkUninitVar("int f()\n"
+                       "{\n"
+                       "    return if\n"
+                       "}\n");
+        ASSERT_EQUALS("", errout.str());
     }
 
 
@@ -1125,6 +1132,13 @@ private:
                        "    printf(\"%s\", a);\n"
                        "}");
         ASSERT_EQUALS("[test.cpp:3]: (error) Uninitialized variable: a\n", errout.str());
+
+        checkUninitVar("void f() {\n"    // Ticket #3497
+                       "    char header[1];\n"
+                       "    *((unsigned char*)(header)) = 0xff;\n"
+                       "    return header[0];\n"
+                       "}\n");
+        ASSERT_EQUALS("", errout.str());
     }
 
     // alloc..
@@ -2005,6 +2019,16 @@ private:
                         "    typeof(*abc);\n"
                         "}");
         ASSERT_EQUALS("", errout.str());
+
+        // Ticket #3486 - Don't crash garbage code
+        checkUninitVar2("void f()\n"
+                        "{\n"
+                        "  (\n"
+                        "    x;\n"
+                        "    int a, a2, a2*x; if () ;\n"
+                        "  )\n"
+                        "}\n");
+        ASSERT_EQUALS("[test.cpp:5]: (error) Uninitialized variable: a2\n", errout.str());
     }
 };
 

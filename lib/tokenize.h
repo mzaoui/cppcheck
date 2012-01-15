@@ -22,6 +22,8 @@
 #define tokenizeH
 //---------------------------------------------------------------------------
 
+#include "path.h"
+
 #include <string>
 #include <map>
 #include <list>
@@ -47,41 +49,23 @@ public:
     Tokenizer(const Settings * settings, ErrorLogger *errorLogger);
     virtual ~Tokenizer();
 
-    /** The file extension. Used by isC() etc. */
-    std::string fileExtension() const {
-        if (_files.empty())
-            return std::string("");
-        const std::string::size_type pos = _files[0].rfind('.');
-        if (pos != std::string::npos)
-            return _files[0].substr(pos);
-        return std::string("");
-    }
+    /** Returns the source file path. e.g. "file.cpp" */
+    std::string getSourceFilePath() const;
 
     /** Is the code JAVA. Used for bailouts */
-    bool isJava() const {
-        return fileExtension() == ".java";
-    }
+    bool isJava() const;
 
     /** Is the code C#. Used for bailouts */
-    bool isCSharp() const {
-        return fileExtension() == ".cs";
-    }
+    bool isCSharp() const;
 
     /** Is the code JAVA/C#. Used for bailouts */
-    bool isJavaOrCSharp() const {
-        return isJava() || isCSharp();
-    }
+    bool isJavaOrCSharp() const;
 
     /** Is the code C. Used for bailouts */
-    bool isC() const {
-        std::string ext = fileExtension();
-        return (ext == ".c" || ext == ".C");
-    }
+    bool isC() const;
 
     /** Is the code CPP. Used for bailouts */
-    bool isCPP() const {
-        return !isC() && !isJavaOrCSharp();
-    }
+    bool isCPP() const;
 
     /**
      * Check if inner scope ends with a call to a noreturn function
@@ -481,7 +465,19 @@ public:
 
     void simplifyParameterVoid();
 
+    void concatenateDoubleSharp();
+
+    void simplifyLineMacro();
+
+    void simplifyNull();
+
+    void concatenateNegativeNumber();
+
+    void simplifyRoundCurlyParenthesis();
+
     void simplifyDebugNew();
+
+    void simplifySQL();
 
     bool hasEnumsWithTypedef();
 
@@ -490,40 +486,6 @@ public:
     bool hasComplicatedSyntaxErrorsInTemplates();
 
     void simplifyReservedWordNullptr();
-
-    /**
-     * simplify template instantiations (use default argument values)
-     * @param templates list of template declarations
-     * @param templateInstantiations list of template instantiations
-     */
-    void simplifyTemplatesUseDefaultArgumentValues(const std::list<Token *> &templates,
-            const std::list<Token *> &templateInstantiations);
-
-    /**
-     * Simplify templates : expand all instantiatiations for a template
-     * @todo It seems that inner templates should be instantiated recursively
-     * @param tok token where the template declaration begins
-     * @param templateInstantiations a list of template usages (not necessarily just for this template)
-     * @param expandedtemplates all templates that has been expanded so far. The full names are stored.
-     */
-    void simplifyTemplateInstantions(const Token *tok,
-                                     std::list<Token *> &templateInstantiations,
-                                     std::set<std::string> &expandedtemplates);
-
-    void simplifyTemplatesExpandTemplate(const Token *tok,
-                                         const std::string &name,
-                                         std::vector<const Token *> &typeParametersInDeclaration,
-                                         const std::string &newName,
-                                         std::vector<const Token *> &typesUsedInTemplateInstantion,
-                                         std::list<Token *> &templateInstantiations);
-
-    /**
-     * Match template declaration/instantiation
-     * @param tok The ">" token e.g. before "class"
-     * @return -1 to bail out or positive integer to identity the position
-     * of the template name.
-     */
-    int simplifyTemplatesGetTemplateNamePosition(const Token *tok);
 
     /**
      * Simplify e.g. 'atol("0")' into '0'

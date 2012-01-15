@@ -73,9 +73,52 @@ public:
     /**
       * @brief Get an extension of the filename.
       * @param path Path containing filename.
-      * @return Filename extension (containing the dot, e.g. ".h").
+      * @return Filename extension (containing the dot, e.g. ".h" or ".CPP").
       */
     static std::string getFilenameExtension(const std::string &path);
+
+    /**
+      * @brief Get an extension of the filename in lower case.
+      * @param path Path containing filename.
+      * @return Filename extension (containing the dot, e.g. ".h").
+      */
+    static std::string getFilenameExtensionInLowerCase(const std::string &path);
+
+    /**
+     * @brief Check if the file extension indicates that it's a C/C++ source file.
+     * Check if the file has source file extension: *.c;*.cpp;*.cxx;*.c++;*.cc;*.txx
+     * @param filename filename to check
+     * @return returns true if the file extension indicates it should be checked
+     */
+    static bool acceptFile(const std::string &filename);
+
+    /**
+     * @brief Identify language based on file extension.
+     * @param extensionInLowerCase e.g. ".c"
+     * @return true if extension is meant for C files
+     */
+    static bool isC(const std::string &extensionInLowerCase);
+
+    /**
+     * @brief Identify language based on file extension.
+     * @param extensionInLowerCase e.g. ".cpp"
+     * @return true if extension is meant for C++ files
+     */
+    static bool isCPP(const std::string &extensionInLowerCase);
+
+    /**
+     * @brief Identify language based on file extension.
+     * @param extensionInLowerCase e.g. ".java"
+     * @return true if extension is meant for Java files
+     */
+    static bool isJava(const std::string &extensionInLowerCase);
+
+    /**
+     * @brief Identify language based on file extension.
+     * @param extensionInLowerCase e.g. ".cs"
+     * @return true if extension is meant for C# files
+     */
+    static bool isCSharp(const std::string &extensionInLowerCase);
 };
 
 /// @}

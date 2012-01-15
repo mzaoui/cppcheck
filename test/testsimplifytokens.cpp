@@ -49,6 +49,7 @@ private:
         TEST_CASE(combine_strings);
         TEST_CASE(double_plus);
         TEST_CASE(redundant_plus);
+        TEST_CASE(redundant_plus_numbers);
         TEST_CASE(parentheses1);
         TEST_CASE(parenthesesVar);      // Remove redundant parentheses around variable .. "( %var% )"
         TEST_CASE(declareVar);
@@ -694,6 +695,58 @@ private:
                                   "a=a - - - b;\n"
                                   "}\n";
             ASSERT_EQUALS("void foo ( int a , int b ) { a = a - b ; }", tok(code1));
+        }
+    }
+
+    void redundant_plus_numbers() {
+        {
+            const char code1[] =  "void foo( int a )\n"
+                                  "{\n"
+                                  "a=a + + 1;\n"
+                                  "}\n";
+            ASSERT_EQUALS("void foo ( int a ) { a = a + 1 ; }", tok(code1));
+        }
+        {
+            const char code1[] =  "void foo( int a )\n"
+                                  "{\n"
+                                  "a=a + + + 1;\n"
+                                  "}\n";
+            ASSERT_EQUALS("void foo ( int a ) { a = a + 1 ; }", tok(code1));
+        }
+        {
+            const char code1[] =  "void foo( int a )\n"
+                                  "{\n"
+                                  "a=a + - 1;\n"
+                                  "}\n";
+            ASSERT_EQUALS("void foo ( int a ) { a = a - 1 ; }", tok(code1));
+        }
+        {
+            const char code1[] =  "void foo( int a )\n"
+                                  "{\n"
+                                  "a=a - + 1;\n"
+                                  "}\n";
+            ASSERT_EQUALS("void foo ( int a ) { a = a - 1 ; }", tok(code1));
+        }
+        {
+            const char code1[] =  "void foo( int a )\n"
+                                  "{\n"
+                                  "a=a - - 1;\n"
+                                  "}\n";
+            ASSERT_EQUALS("void foo ( int a ) { a = a + 1 ; }", tok(code1));
+        }
+        {
+            const char code1[] =  "void foo( int a )\n"
+                                  "{\n"
+                                  "a=a - + - 1;\n"
+                                  "}\n";
+            ASSERT_EQUALS("void foo ( int a ) { a = a + 1 ; }", tok(code1));
+        }
+        {
+            const char code1[] =  "void foo( int a )\n"
+                                  "{\n"
+                                  "a=a - - - 1;\n"
+                                  "}\n";
+            ASSERT_EQUALS("void foo ( int a ) { a = a - 1 ; }", tok(code1));
         }
     }
 
@@ -3073,6 +3126,54 @@ private:
                                     " A1 ( ) : b ( 3.22 )"
                                     " {"
                                     " a = 322 ; return ;"
+                                    " } "
+                                    "}";
+            ASSERT_EQUALS(expected, tok(code));
+        }
+
+        {
+            const char code[] = "class A"
+                                "{"
+                                " int a; "
+                                " double b; "
+                                "    A() : b(3.22)"
+                                "    {"
+                                "        goto source ;"
+                                "        bleeh;"
+                                "        source:"
+                                "        a = 322;"
+                                "    }"
+                                "}"
+                                "class A1 : public A"
+                                "{"
+                                " int a1; "
+                                " double b1; "
+                                "    A1() : b1(3.22)"
+                                "    {"
+                                "        goto source1 ;"
+                                "        bleeh1;"
+                                "        source1:"
+                                "        a = 322;"
+                                "    }"
+                                "}";
+            const char expected[] = "class A "
+                                    "{"
+                                    " int a ;"
+                                    " double b ;"
+                                    " A ( ) : b ( 3.22 )"
+                                    " {"
+                                    " a = 322 ;"
+                                    " return ;"
+                                    " } "
+                                    "} "
+                                    "class A1 : public A "
+                                    "{"
+                                    " int a1 ;"
+                                    " double b1 ;"
+                                    " A1 ( ) : b1 ( 3.22 )"
+                                    " {"
+                                    " a = 322 ;"
+                                    " return ;"
                                     " } "
                                     "}";
             ASSERT_EQUALS(expected, tok(code));

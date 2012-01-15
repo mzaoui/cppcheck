@@ -85,6 +85,8 @@ private:
         TEST_CASE(localvar37); // ticket #3078
         TEST_CASE(localvar38);
         TEST_CASE(localvar39); // ticket #3454
+        TEST_CASE(localvar40); // ticket #3473
+        TEST_CASE(localvar41); // ticket #3481
         TEST_CASE(localvaralias1);
         TEST_CASE(localvaralias2); // ticket #1637
         TEST_CASE(localvaralias3); // ticket #1639
@@ -99,6 +101,7 @@ private:
         TEST_CASE(localvarstatic);
         TEST_CASE(localvardynamic1);
         TEST_CASE(localvardynamic2); // ticket #2904
+        TEST_CASE(localvardynamic3); // ticket #3467
         TEST_CASE(localvararray1);  // ticket #2780
         TEST_CASE(localvararray2);  // ticket #3438
         TEST_CASE(localvarstring1);
@@ -1376,6 +1379,23 @@ private:
         functionVariableUsage("void f() {\n"
                               "    int a = 1;\n"
                               "    foo(x*a);\n"
+                              "}\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void localvar40() {
+        functionVariableUsage("int f() {\n"
+                              "    int a = 1;\n"
+                              "    return x & a;\n"
+                              "}\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void localvar41() {
+        //garbage code : don't crash
+        functionVariableUsage("{\n"
+                              "    if (1) = x\n"
+                              "    else abort s[2]\n"
                               "}\n");
         ASSERT_EQUALS("", errout.str());
     }
@@ -2859,6 +2879,17 @@ private:
                               "    Fred* ptr = new Fred();\n"
                               "    ptr->i = 0;\n"
                               "    delete ptr;\n"
+                              "}\n");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void localvardynamic3() {
+        // Ticket #3477 - False positive that 'data' is not assigned a value
+        functionVariableUsage("void foo() {\n"
+                              "    int* data = new int[100];\n"
+                              "    int* p = data;\n"
+                              "    for ( int i = 0; i < 10; ++i )\n"
+                              "        p++;\n"
                               "}\n");
         ASSERT_EQUALS("", errout.str());
     }

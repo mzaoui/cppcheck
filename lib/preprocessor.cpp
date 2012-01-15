@@ -104,7 +104,7 @@ static std::string unify(const std::string &s, char separator)
 }
 
 /** Just read the code into a string. Perform simple cleanup of the code */
-std::string Preprocessor::read(std::istream &istr, const std::string &filename, Settings *settings)
+std::string Preprocessor::read(std::istream &istr, const std::string &filename)
 {
     // ------------------------------------------------------------------------------------------
     //
@@ -164,7 +164,7 @@ std::string Preprocessor::read(std::istream &istr, const std::string &filename, 
     // ------------------------------------------------------------------------------------------
     //
     // Remove all comments..
-    result = removeComments(result, filename, settings);
+    result = removeComments(result, filename);
 
     // ------------------------------------------------------------------------------------------
     //
@@ -301,7 +301,7 @@ static bool isFallThroughComment(std::string comment)
            comment == "fall";
 }
 
-std::string Preprocessor::removeComments(const std::string &str, const std::string &filename, Settings *settings)
+std::string Preprocessor::removeComments(const std::string &str, const std::string &filename)
 {
     // For the error report
     unsigned int lineno = 1;
@@ -371,7 +371,7 @@ std::string Preprocessor::removeComments(const std::string &str, const std::stri
                 break;
             std::string comment(str, commentStart, i - commentStart);
 
-            if (settings && settings->_inlineSuppressions) {
+            if (_settings && _settings->_inlineSuppressions) {
                 std::istringstream iss(comment);
                 std::string word;
                 iss >> word;
@@ -408,7 +408,7 @@ std::string Preprocessor::removeComments(const std::string &str, const std::stri
                 fallThroughComment = true;
             }
 
-            if (settings && settings->_inlineSuppressions) {
+            if (_settings && _settings->_inlineSuppressions) {
                 std::istringstream iss(comment);
                 std::string word;
                 iss >> word;
@@ -425,10 +425,10 @@ std::string Preprocessor::removeComments(const std::string &str, const std::stri
 
             // Add any pending inline suppressions that have accumulated.
             if (!suppressionIDs.empty()) {
-                if (settings != NULL) {
+                if (_settings != NULL) {
                     // Add the suppressions.
                     for (size_t j(0); j < suppressionIDs.size(); ++j) {
-                        const std::string errmsg(settings->nomsg.addSuppression(suppressionIDs[j], filename, lineno));
+                        const std::string errmsg(_settings->nomsg.addSuppression(suppressionIDs[j], filename, lineno));
                         if (!errmsg.empty()) {
                             writeError(filename, lineno, _errorLogger, "cppcheckError", errmsg);
                         }
@@ -443,7 +443,7 @@ std::string Preprocessor::removeComments(const std::string &str, const std::stri
 
                 // First check for a "fall through" comment match, but only
                 // add a suppression if the next token is 'case' or 'default'
-                if (_settings->isEnabled("style") && _settings->experimental && fallThroughComment) {
+                if (_settings && _settings->isEnabled("style") && _settings->experimental && fallThroughComment) {
                     std::string::size_type j = str.find_first_not_of("abcdefghijklmnopqrstuvwxyz", i);
                     std::string tok = str.substr(i, j - i);
                     if (tok == "case" || tok == "default")
@@ -453,10 +453,10 @@ std::string Preprocessor::removeComments(const std::string &str, const std::stri
 
                 // Add any pending inline suppressions that have accumulated.
                 if (!suppressionIDs.empty()) {
-                    if (settings != NULL) {
+                    if (_settings != NULL) {
                         // Add the suppressions.
                         for (size_t j(0); j < suppressionIDs.size(); ++j) {
-                            const std::string errmsg(settings->nomsg.addSuppression(suppressionIDs[j], filename, lineno));
+                            const std::string errmsg(_settings->nomsg.addSuppression(suppressionIDs[j], filename, lineno));
                             if (!errmsg.empty()) {
                                 writeError(filename, lineno, _errorLogger, "cppcheckError", errmsg);
                             }
@@ -668,7 +668,7 @@ void Preprocessor::preprocess(std::istream &istr, std::map<std::string, std::str
     preprocess(istr, data, configs, filename, includePaths);
     for (std::list<std::string>::const_iterator it = configs.begin(); it != configs.end(); ++it) {
         if (_settings && (_settings->userUndefs.find(*it) == _settings->userUndefs.end()))
-            result[ *it ] = Preprocessor::getcode(data, *it, filename, _settings, _errorLogger);
+            result[ *it ] = getcode(data, *it, filename);
     }
 }
 
@@ -756,7 +756,7 @@ void Preprocessor::preprocess(std::istream &srcCodeStream, std::string &processe
     if (file0.empty())
         file0 = filename;
 
-    processedFile = read(srcCodeStream, filename, _settings);
+    processedFile = read(srcCodeStream, filename);
 
     // Remove asm(...)
     removeAsm(processedFile);
@@ -1221,8 +1221,8 @@ std::list<std::string> Preprocessor::getcfgs(const std::string &filedata, const 
 
 void Preprocessor::simplifyCondition(const std::map<std::string, std::string> &cfg, std::string &condition, bool match)
 {
-    Settings settings;
-    Tokenizer tokenizer(&settings, NULL);
+    const Settings settings;
+    Tokenizer tokenizer(&settings, _errorLogger);
     std::istringstream istr("(" + condition + ")");
     if (!tokenizer.tokenize(istr, "", "", true)) {
         // If tokenize returns false, then there is syntax error in the
@@ -1380,7 +1380,7 @@ bool Preprocessor::match_cfg_def(const std::map<std::string, std::string> &cfg, 
 }
 
 
-std::string Preprocessor::getcode(const std::string &filedata, const std::string &cfg, const std::string &filename, const Settings *settings, ErrorLogger *errorLogger)
+std::string Preprocessor::getcode(const std::string &filedata, const std::string &cfg, const std::string &filename)
 {
     // For the error report
     unsigned int lineno = 0;
@@ -1440,7 +1440,7 @@ std::string Preprocessor::getcode(const std::string &filedata, const std::string
                 break;
 
             if (line.find("=") != std::string::npos) {
-                Tokenizer tokenizer(settings, NULL);
+                Tokenizer tokenizer(_settings, NULL);
                 line.erase(0, sizeof("#pragma endasm"));
                 std::istringstream tempIstr(line);
                 tokenizer.tokenize(tempIstr, "");
@@ -1462,9 +1462,9 @@ std::string Preprocessor::getcode(const std::string &filedata, const std::string
         if (line.compare(0, 8, "#define ") == 0) {
             match = true;
 
-            if (settings) {
+            if (_settings) {
                 typedef std::set<std::string>::const_iterator It;
-                for (It it = settings->userUndefs.begin(); it != settings->userUndefs.end(); ++it) {
+                for (It it = _settings->userUndefs.begin(); it != _settings->userUndefs.end(); ++it) {
                     std::string::size_type pos = line.find_first_not_of(' ',8);
                     if (pos != std::string::npos) {
                         std::string::size_type pos2 = line.find(*it,pos);
@@ -1548,9 +1548,9 @@ std::string Preprocessor::getcode(const std::string &filedata, const std::string
 
         // #error => return ""
         if (match && line.compare(0, 6, "#error") == 0) {
-            if (settings && !settings->userDefines.empty()) {
-                Settings settings2(*settings);
-                Preprocessor preprocessor(&settings2, errorLogger);
+            if (_settings && !_settings->userDefines.empty()) {
+                Settings settings2(*_settings);
+                Preprocessor preprocessor(&settings2, _errorLogger);
                 preprocessor.error(filenames.top(), lineno, line);
             }
             return "";
@@ -1591,7 +1591,7 @@ std::string Preprocessor::getcode(const std::string &filedata, const std::string
         ret << line << "\n";
     }
 
-    return expandMacros(ret.str(), filename, errorLogger);
+    return expandMacros(ret.str(), filename, _errorLogger);
 }
 
 void Preprocessor::error(const std::string &filename, unsigned int linenr, const std::string &msg)
@@ -1836,7 +1836,7 @@ std::string Preprocessor::handleIncludes(const std::string &code, const std::str
                 includes.push_back(filename);
 
                 ostr << "#file \"" << filename << "\"\n"
-                     << handleIncludes(read(fin, filename, NULL), filename, includePaths, defs, includes) << std::endl
+                     << handleIncludes(read(fin, filename), filename, includePaths, defs, includes) << std::endl
                      << "#endfile\n";
                 continue;
             }
@@ -1909,7 +1909,7 @@ void Preprocessor::handleIncludes(std::string &code, const std::string &filePath
             }
 
             handledFiles.insert(tempFile);
-            processedFile = Preprocessor::read(fin, filename, _settings);
+            processedFile = Preprocessor::read(fin, filename);
             fin.close();
         }
 
