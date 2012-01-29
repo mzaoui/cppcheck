@@ -76,22 +76,22 @@ const Token* TemplateSimplifier::hasComplicatedSyntaxErrorsInTemplates(Token *to
     // check for more complicated syntax errors when using templates..
     for (const Token *tok = tokens; tok; tok = tok->next()) {
         // skip executing scopes..
-        if (Token::Match(tok, ") const| {") || Token::Match(tok, "[,=] {")) {
+        if (Token::simpleMatch(tok, ") {") || Token::Match(tok, ") %var% {") || Token::Match(tok, "[,=] {")) {
             while (tok->str() != "{")
                 tok = tok->next();
             tok = tok->link();
         }
 
         // skip executing scopes (ticket #1984)..
-        if (Token::simpleMatch(tok, "; {"))
+        else if (Token::simpleMatch(tok, "; {"))
             tok = tok->next()->link();
 
         // skip executing scopes (ticket #3183)..
-        if (Token::simpleMatch(tok, "( {"))
+        else if (Token::simpleMatch(tok, "( {"))
             tok = tok->next()->link();
 
         // skip executing scopes (ticket #1985)..
-        if (Token::simpleMatch(tok, "try {")) {
+        else if (Token::simpleMatch(tok, "try {")) {
             tok = tok->next()->link();
             while (Token::simpleMatch(tok, "} catch (")) {
                 tok = tok->linkAt(2);
@@ -917,7 +917,7 @@ bool TemplateSimplifier::simplifyCalculations(Token *_tokens)
                         tok->str(MathLib::calculate(tok->str(), tok->strAt(2), tok->next()->str()[0]));
                     } catch (InternalError &e) {
                         e.token = tok;
-                        throw e;
+                        throw;
                     }
                 }
 

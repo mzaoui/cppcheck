@@ -205,6 +205,7 @@ private:
         TEST_CASE(define_ifdef);
         TEST_CASE(define_ifndef1);
         TEST_CASE(define_ifndef2);
+        TEST_CASE(undef_ifdef);
         TEST_CASE(endfile);
 
         TEST_CASE(redundant_config);
@@ -235,6 +236,8 @@ private:
         TEST_CASE(def_handleIncludes);
         TEST_CASE(def_missingInclude);
         TEST_CASE(def_handleIncludes_ifelse);   // problems in handleIncludes for #else
+
+        TEST_CASE(def_valueWithParenthesis); // #3531
 
         // Using -U to undefine symbols
         TEST_CASE(undef1);
@@ -2632,6 +2635,18 @@ private:
         ASSERT_EQUALS("\n\n\n\n\n\n$char me;\n", preprocessor.getcode(filedata, "A", "a.cpp"));
     }
 
+    void undef_ifdef() {
+        const char filedata[] = "#undef A\n"
+                                "#ifdef A\n"
+                                "123\n"
+                                "#endif\n";
+
+        // Preprocess => actual result..
+        Preprocessor preprocessor(NULL, this);
+        ASSERT_EQUALS("\n\n\n\n", preprocessor.getcode(filedata, "", "a.cpp"));
+        ASSERT_EQUALS("\n\n\n\n", preprocessor.getcode(filedata, "A", "a.cpp"));
+    }
+
     void redundant_config() {
         const char filedata[] = "int main() {\n"
                                 "#ifdef FOO\n"
@@ -3107,6 +3122,36 @@ private:
             std::string actual(preprocessor.handleIncludes(code, filePath, includePaths, defs));
             ASSERT_EQUALS("#define A 1\n#define B A\n\n123\n\n", actual);
         }
+    }
+
+    void def_valueWithParenthesis() {
+        // #define should introduce a new symbol regardless of parenthesis in the value
+        // and regardless of white space in weird places (people do this for some reason).
+        const char code[] = "#define A (Fred)\n"
+                            "      #       define B (Flintstone)\n"
+                            "     #define C (Barney)\n"
+                            "\t#\tdefine\tD\t(Rubble)\t\t\t\n";
+
+        const std::string filePath("test.c");
+        const std::list<std::string> includePaths;
+        std::map<std::string,std::string> defs;
+        Preprocessor preprocessor(NULL, this);
+
+        std::istringstream istr(code);
+        const std::string s(preprocessor.read(istr, ""));
+        preprocessor.handleIncludes(s, filePath, includePaths, defs);
+
+        ASSERT(defs.find("A") != defs.end());
+        ASSERT_EQUALS("(Fred)", defs["A"]);
+
+        ASSERT(defs.find("B") != defs.end());
+        ASSERT_EQUALS("(Flintstone)", defs["B"]);
+
+        ASSERT(defs.find("C") != defs.end());
+        ASSERT_EQUALS("(Barney)", defs["C"]);
+
+        ASSERT(defs.find("D") != defs.end());
+        ASSERT_EQUALS("(Rubble)", defs["D"]);
     }
 
     void undef1() {

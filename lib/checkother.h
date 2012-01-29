@@ -67,6 +67,7 @@ public:
         checkOther.checkDuplicateExpression();
         checkOther.checkUnreachableCode();
         checkOther.checkSuspiciousSemicolon();
+        checkOther.checkWrongPrintfScanfArguments();
 
         // information checks
         checkOther.checkVariableScope();
@@ -91,7 +92,6 @@ public:
         checkOther.checkCCTypeFunctions();
         checkOther.checkFflushOnInputStream();
         checkOther.invalidScanf();
-        checkOther.checkWrongPrintfScanfArguments();
 
         checkOther.checkCoutCerrMisusage();
         checkOther.checkIncorrectLogicOperator();
@@ -107,6 +107,7 @@ public:
         checkOther.checkAssignBoolToPointer();
         checkOther.checkSignOfUnsignedVariable();
         checkOther.checkBitwiseOnBoolean();
+        checkOther.checkDoubleFree();
     }
 
     /** @brief Clarify calculation for ".. a * b ? .." */
@@ -261,11 +262,14 @@ public:
     /** @brief %Check for suspicious use of semicolon */
     void checkSuspiciousSemicolon();
 
+    /** @brief %Check for double free or double close operations */
+    void checkDoubleFree();
+
     // Error messages..
     void cstyleCastError(const Token *tok);
     void dangerousUsageStrtolError(const Token *tok);
     void sprintfOverlappingDataError(const Token *tok, const std::string &varname);
-    void udivError(const Token *tok);
+    void udivError(const Token *tok, bool inconclusive);
     void passedByValueError(const Token *tok, const std::string &parname);
     void constStatementError(const Token *tok, const std::string &type);
     void charArrayIndexError(const Token *tok);
@@ -307,6 +311,8 @@ public:
     void bitwiseOnBooleanError(const Token *tok, const std::string &varname, const std::string &op);
     void comparisonOfBoolExpressionWithIntError(const Token *tok);
     void SuspiciousSemicolonError(const Token *tok);
+    void doubleFreeError(const Token *tok, const std::string &varname);
+    void doubleCloseDirError(const Token *tok, const std::string &varname);
 
     void getErrorMessages(ErrorLogger *errorLogger, const Settings *settings) {
         CheckOther c(0, settings, errorLogger);
@@ -314,7 +320,7 @@ public:
         // error
         c.assignBoolToPointerError(0);
         c.sprintfOverlappingDataError(0, "varname");
-        c.udivError(0);
+        c.udivError(0, false);
         c.zerodivError(0);
         c.mathfunctionCallError(0);
         c.fflushOnInputStreamError(0, "stdin");
@@ -323,6 +329,7 @@ public:
         c.sizeofForStrncmpError(0);
         c.sizeofForNumericParameterError(0);
         c.coutCerrMisusageError(0, "cout");
+        c.doubleFreeError(0, "varname");
 
         // style/warning
         c.cstyleCastError(0);
@@ -391,6 +398,7 @@ public:
                "* incorrect length arguments for 'substr' and 'strncmp'\n"
                "* invalid usage of output stream. For example: std::cout << std::cout;'\n"
                "* wrong number of arguments given to 'printf' or 'scanf;'\n"
+               "* double free() or double closedir()\n"
 
                // style
                "* C-style pointer cast in cpp file\n"

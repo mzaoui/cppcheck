@@ -232,6 +232,12 @@ public:
     /** Remove redundant assignment */
     void removeRedundantAssignment();
 
+    /** Simplifies some realloc usage like
+      * 'x = realloc (0, n);' => 'x = malloc(n);'
+      * 'x = realloc (y, 0);' => 'x = 0; free(y);'
+      */
+    void simplifyRealloc();
+
     /**
      * Replace sizeof() to appropriate size.
      */
@@ -245,9 +251,7 @@ public:
 
     /**
      * Simplify variable initialization
-     * ; int *p(0);
-     * =>
-     * ; int *p = 0;
+     * '; int *p(0);' => '; int *p = 0;'
      */
     void simplifyInitVar();
     Token * initVar(Token * tok);
@@ -350,6 +354,11 @@ public:
     void simplifyCasts();
 
     /**
+     * Change (multiple) arrays to (multiple) pointers.
+     */
+    void simplifyUndefinedSizeArray();
+
+    /**
      * A simplify function that replaces a variable with its value in cases
      * when the value is known. e.g. "x=10; if(x)" => "x=10;if(10)"
      *
@@ -449,8 +458,9 @@ public:
     /**
      * Simplify functions like "void f(x) int x; {"
      * into "void f(int x) {"
+     * @return false only if there's a syntax error
      */
-    void simplifyFunctionParameters();
+    bool simplifyFunctionParameters();
 
     /**
      * Simplify templates
@@ -557,7 +567,7 @@ public:
      * @param last last token to copy
      * @return new location of last token copied
      */
-    Token *copyTokens(Token *dest, const Token *first, const Token *last);
+    Token *copyTokens(Token *dest, const Token *first, const Token *last, bool one_line = true);
 
     /**
      * Send error message to error logger about internal bug.
@@ -662,6 +672,11 @@ public:
     void simplifyQtSignalsSlots();
 
     /**
+     * Remove wxWidgets macros
+     */
+    void simplifyWxWidgets();
+
+    /**
      * Collapse operator name tokens into single token
      * operator = => operator=
      */
@@ -722,7 +737,7 @@ public:
      * Simplify e.g. 'return(strncat(temp,"a",1));' into
      * strncat(temp,"a",1); return temp;
      */
-    void simplifyReturn();
+    void simplifyReturnStrncat();
 
     /**
      * Output list of unknown types.

@@ -88,6 +88,7 @@ private:
         TEST_CASE(testScanf1);
         TEST_CASE(testScanf2);
         TEST_CASE(testScanf3);
+        TEST_CASE(testScanf4);
 
         TEST_CASE(testScanfArgument);
         TEST_CASE(testPrintfArgument);
@@ -153,6 +154,8 @@ private:
 
         TEST_CASE(checkForSuspiciousSemicolon1);
         TEST_CASE(checkForSuspiciousSemicolon2);
+
+        TEST_CASE(checkDoubleFree);
     }
 
     void check(const char code[], const char *filename = NULL, bool experimental = false) {
@@ -175,7 +178,6 @@ private:
 
         // Simplify token list..
         tokenizer.simplifyTokenList();
-
         checkOther.runSimplifiedChecks(&tokenizer, &settings, this);
     }
 
@@ -2027,9 +2029,9 @@ private:
               "    fclose(file);\n"
               "    return b;\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:6]: (warning) scanf without field width limits can crash with huge input data\n"
-                      "[test.cpp:7]: (warning) scanf without field width limits can crash with huge input data\n"
-                      "[test.cpp:8]: (warning) fscanf format string has 0 parameters but 1 are given\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:8]: (warning) fscanf format string has 0 parameters but 1 are given\n"
+                      "[test.cpp:6]: (warning) scanf without field width limits can crash with huge input data\n"
+                      "[test.cpp:7]: (warning) scanf without field width limits can crash with huge input data\n", errout.str());
     }
 
     void testScanf2() {
@@ -2044,9 +2046,9 @@ private:
               "    fclose(file);\n"
               "    return b;\n"
               "}");
-        ASSERT_EQUALS("[test.cpp:6]: (warning) scanf without field width limits can crash with huge input data\n"
-                      "[test.cpp:7]: (warning) scanf without field width limits can crash with huge input data\n"
-                      "[test.cpp:8]: (warning) fscanf format string has 0 parameters but 1 are given\n", errout.str());
+        ASSERT_EQUALS("[test.cpp:8]: (warning) fscanf format string has 0 parameters but 1 are given\n"
+                      "[test.cpp:6]: (warning) scanf without field width limits can crash with huge input data\n"
+                      "[test.cpp:7]: (warning) scanf without field width limits can crash with huge input data\n", errout.str());
     }
 
     void testScanf3() {
@@ -2073,6 +2075,14 @@ private:
               "    return b;\n"
               "}");
         ASSERT_EQUALS("[test.cpp:7]: (warning) fscanf format string has 0 parameters but 1 are given\n", errout.str());
+    }
+
+    void testScanf4() {
+        check("void f() {\n"
+              "    char c;\n"
+              "    scanf(\"%c\", &c);\n"
+              "}");
+        ASSERT_EQUALS("", errout.str());
     }
 
     void testScanfArgument() {
@@ -2212,6 +2222,7 @@ private:
               "    printf(\"%G\", bp);\n"
               "    printf(\"%f\", d);\n"
               "    printf(\"%f\", b);\n"
+              "    printf(\"%f\", (float)cpi);\n"
               "}");
         ASSERT_EQUALS("[test.cpp:3]: (warning) %e in format string (no. 1) requires a floating point number given in the argument list\n"
                       "[test.cpp:4]: (warning) %E in format string (no. 1) requires a floating point number given in the argument list\n"
@@ -4448,6 +4459,237 @@ private:
             "    do_something();\n"
             "  }\n"
             "}");
+        ASSERT_EQUALS("", errout.str());
+    }
+
+    void checkDoubleFree() {
+        check(
+            "void foo(char *p) {\n"
+            "  free(p);\n"
+            "  free(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:3]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(char *p, char *r) {\n"
+            "  free(p);\n"
+            "  free(r);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo() {\n"
+            "  free(p);\n"
+            "  free(r);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  if (x < 3) free(p);\n"
+            "  else if (x > 9) free(p);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  free(p);\n"
+            "  getNext(&p);\n"
+            "  free(p);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  free(p);\n"
+            "  bar();\n"
+            "  free(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  free(p);\n"
+            "  printf(\"Freed memory at location %x\", (unsigned int) p);\n"
+            "  free(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(DIR *p) {\n"
+            "  closedir(p);\n"
+            "  closedir(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:3]: (error) Directory handle 'p' closed twice.\n", errout.str());
+
+        check(
+            "void foo(DIR *p, DIR *r) {\n"
+            "  closedir(p);\n"
+            "  closedir(r);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(DIR *p) {\n"
+            "  if (x < 3) closedir(p);\n"
+            "  else if (x > 9) closedir(p);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(DIR *p) {\n"
+            "  closedir(p);\n"
+            "  gethandle(&p);\n"
+            "  closedir(p);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(DIR *p) {\n"
+            "  closedir(p);\n"
+            "  gethandle();\n"
+            "  closedir(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Directory handle 'p' closed twice.\n", errout.str());
+
+        check(
+            "void foo(Data* p) {\n"
+            "  free(p->a);\n"
+            "  free(p->b);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void f() {\n"
+            "    char *p = malloc(100);\n"
+            "    if (x) {\n"
+            "        free(p);\n"
+            "        bailout();\n"
+            "    }\n"
+            "    free(p);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void f() {\n"
+            "    char *p = malloc(100);\n"
+            "    if (x) {\n"
+            "        free(p);\n"
+            "		 x = 0;\n"
+            "    }\n"
+            "    free(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:7]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void f() {\n"
+            "    char *p = do_something();\n"
+            "    free(p);\n"
+            "    p = do_something();\n"
+            "    free(p);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  g_free(p);\n"
+            "  g_free(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:3]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(char *p, char *r) {\n"
+            "  g_free(p);\n"
+            "  g_free(r);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  g_free(p);\n"
+            "  getNext(&p);\n"
+            "  g_free(p);\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  g_free(p);\n"
+            "  bar();\n"
+            "  g_free(p);\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  delete p;\n"
+            "  delete p;\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:3]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(char *p, char *r) {\n"
+            "  delete p;\n"
+            "  delete r;\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  delete p;\n"
+            "  getNext(&p);\n"
+            "  delete p;\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  delete p;\n"
+            "  bar();\n"
+            "  delete p;\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  delete[] p;\n"
+            "  delete[] p;\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:3]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "void foo(char *p, char *r) {\n"
+            "  delete[] p;\n"
+            "  delete[] r;\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  delete[] p;\n"
+            "  getNext(&p);\n"
+            "  delete[] p;\n"
+            "}");
+        ASSERT_EQUALS("", errout.str());
+
+        check(
+            "void foo(char *p) {\n"
+            "  delete[] p;\n"
+            "  bar();\n"
+            "  delete[] p;\n"
+            "}");
+        ASSERT_EQUALS("[test.cpp:4]: (error) Memory pointed to by 'p' is freed twice.\n", errout.str());
+
+        check(
+            "~LineMarker() {"
+            "  delete pxpm;"
+            "}"
+            "LineMarker &operator=(const LineMarker &) {"
+            "  delete pxpm;"
+            "  pxpm = NULL;"
+            "  return *this;"
+            "}"
+        );
         ASSERT_EQUALS("", errout.str());
     }
 

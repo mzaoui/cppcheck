@@ -442,15 +442,7 @@ void CheckClass::initializeVarList(const Function &func, std::list<std::string> 
                 // the function is external and it's neither friend nor inherited virtual function.
                 // assume all variables that are passed to it are initialized..
                 else {
-                    unsigned int indentlevel2 = 0;
-                    for (const Token *tok = ftok->tokAt(2); tok; tok = tok->next()) {
-                        if (tok->str() == "(")
-                            ++indentlevel2;
-                        else if (tok->str() == ")") {
-                            if (indentlevel2 == 0)
-                                break;
-                            --indentlevel2;
-                        }
+                    for (const Token *tok = ftok->tokAt(2); tok && tok != ftok->next()->link(); tok = tok->next()) {
                         if (tok->isName()) {
                             assignVar(tok->str(), scope, usage);
                         }
@@ -645,16 +637,9 @@ void CheckClass::noMemset()
     std::list<Scope>::const_iterator scope;
 
     for (scope = symbolDatabase->scopeList.begin(); scope != symbolDatabase->scopeList.end(); ++scope) {
-        std::list<Function>::const_iterator func;
-
-        for (func = scope->functionList.begin(); func != scope->functionList.end(); ++func) {
-            // only check functions with bodies
-            if (!func->hasBody)
-                continue;
-
+        if (scope->type == Scope::eFunction) {
             // Locate all 'memset' tokens..
-            const Token *end = func->start->link();
-            for (const Token *tok = func->start; tok && tok != end; tok = tok->next()) {
+            for (const Token *tok = scope->classStart; tok && tok != scope->classEnd; tok = tok->next()) {
                 if (!Token::Match(tok, "memset|memcpy|memmove"))
                     continue;
 

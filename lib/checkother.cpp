@@ -599,8 +599,7 @@ void CheckOther::checkSwitchCaseFallThrough()
     const char breakPattern[] = "break|continue|return|exit|goto|throw";
 
     for (std::list<Scope>::const_iterator i = symbolDatabase->scopeList.begin(); i != symbolDatabase->scopeList.end(); ++i) {
-        const Token* const tok = i->classDef;
-        if (i->type != Scope::eSwitch || !tok) // Find the beginning of a switch
+        if (i->type != Scope::eSwitch || !i->classStart) // Find the beginning of a switch
             continue;
 
         // Check the contents of the switch statement
@@ -609,7 +608,7 @@ void CheckOther::checkSwitchCaseFallThrough()
         std::stack<Token *> scopenest;
         bool justbreak = true;
         bool firstcase = true;
-        for (const Token *tok2 = tok->next()->link()->tokAt(2); tok2; tok2 = tok2->next()) {
+        for (const Token *tok2 = i->classStart; tok2 != i->classEnd; tok2 = tok2->next()) {
             if (Token::simpleMatch(tok2, "if (")) {
                 tok2 = tok2->next()->link()->next();
                 if (tok2->link() == NULL) {
@@ -827,11 +826,11 @@ void CheckOther::checkAssignmentInAssert()
     const Token *endTok = tok ? tok->next()->link() : NULL;
 
     while (tok && endTok) {
-        const Token* varTok = Token::findmatch(tok->tokAt(2), "%var% --|++|+=|-=|*=|/=|&=|^=|=", endTok);
-        if (varTok) {
-            assignmentInAssertError(tok, varTok->str());
-        } else if (NULL != (varTok = Token::findmatch(tok->tokAt(2), "--|++ %var%", endTok))) {
-            assignmentInAssertError(tok, varTok->strAt(1));
+        for (tok = tok->tokAt(2); tok != endTok; tok = tok->next()) {
+            if (tok->isName() && (tok->next()->isAssignmentOp() || tok->next()->str() == "++" || tok->next()->str() == "--"))
+                assignmentInAssertError(tok, tok->str());
+            else if (Token::Match(tok, "--|++ %var%"))
+                assignmentInAssertError(tok, tok->strAt(1));
         }
 
         tok = Token::findmatch(endTok->next(), assertPattern);
@@ -1067,20 +1066,17 @@ void CheckOther::checkCatchExceptionByValue()
     if (!_settings->isEnabled("style"))
         return;
 
-    const char catchPattern[] = "} catch (";
-    const Token *tok = Token::findmatch(_tokenizer->tokens(), catchPattern);
-    const Token *endTok = tok ? tok->linkAt(2) : NULL;
+    const SymbolDatabase* const symbolDatabase = _tokenizer->getSymbolDatabase();
 
-    while (tok && endTok) {
+    for (std::list<Scope>::const_iterator i = symbolDatabase->scopeList.begin(); i != symbolDatabase->scopeList.end(); ++i) {
+        if (i->type != Scope::eCatch)
+            continue;
+
         // Find a pass-by-value declaration in the catch(), excluding basic types
         // e.g. catch (std::exception err)
-        const Token *tokType = Token::findmatch(tok, "%type% %var% )", endTok);
-        if (tokType && !tokType->isStandardType()) {
-            catchExceptionByValueError(tokType);
-        }
-
-        tok = Token::findmatch(endTok->next(), catchPattern);
-        endTok = tok ? tok->linkAt(2) : NULL;
+        const Variable* var = symbolDatabase->getVariableFromVarId(i->classStart->tokAt(-2)->varId());
+        if (var && var->isClass() && !var->isPointer() && !var->isReference())
+            catchExceptionByValueError(i->classDef);
     }
 }
 
@@ -1212,7 +1208,8 @@ void CheckOther::invalidScanf()
             }
 
             else if (std::isalpha(formatstr[i])) {
-                invalidScanfError(tok);
+                if (formatstr[i] != 'c')  // #3490 - field width limits are not necessary for %c
+                    invalidScanfError(tok);
                 format = false;
             }
         }
@@ -1637,7 +1634,7 @@ void CheckOther::checkUnreachableCode()
                 // that the goto jump was intended to skip some code on the first loop iteration.
                 bool labelInFollowingLoop = false;
                 if (labelName && Token::Match(secondBreak, "while|do|for")) {
-                    const Token *scope = Token::findmatch(secondBreak, "{");
+                    const Token *scope = Token::findsimplematch(secondBreak, "{");
                     if (scope) {
                         for (const Token *tokIter = scope; tokIter != scope->link() && tokIter; tokIter = tokIter->next()) {
                             if (Token::Match(tokIter, "[;{}] %any% :") && labelName->str() == tokIter->strAt(1)) {
@@ -1677,32 +1674,51 @@ void CheckOther::unreachableCodeError(const Token *tok)
 //---------------------------------------------------------------------------
 static bool isUnsigned(const Variable* var)
 {
-    return(var && var->typeStartToken()->isUnsigned() && var->typeStartToken() == var->typeEndToken());
+    return(var && var->typeStartToken()->isUnsigned() && !var->isPointer() && !var->isArray());
+}
+static bool isSigned(const Variable* var)
+{
+    return(var && !var->typeStartToken()->isUnsigned() && Token::Match(var->typeEndToken(), "int|char|short|long") && !var->isPointer() && !var->isArray());
 }
 
 void CheckOther::checkUnsignedDivision()
 {
     const SymbolDatabase* symbolDatabase = _tokenizer->getSymbolDatabase();
+    bool style = _settings->isEnabled("style");
 
+    const Token* ifTok = 0;
     // Check for "ivar / uvar" and "uvar / ivar"
     for (const Token *tok = _tokenizer->tokens(); tok; tok = tok->next()) {
-        if (!Token::Match(tok, "[).]") && Token::Match(tok->next(), "%var% / %num%")) {
-            if (tok->strAt(3)[0] == '-' && isUnsigned(symbolDatabase->getVariableFromVarId(tok->next()->varId()))) {
-                udivError(tok->next());
-            }
-        }
+        if (Token::Match(tok, "[).]")) // Don't check members or casted variables
+            continue;
 
-        else if (Token::Match(tok, "(|[|=|%op% %num% / %var%")) {
-            if (tok->strAt(1)[0] == '-' && isUnsigned(symbolDatabase->getVariableFromVarId(tok->tokAt(3)->varId()))) {
-                udivError(tok->next());
+        if (Token::Match(tok->next(), "%var% / %num%")) {
+            if (tok->strAt(3)[0] == '-' && isUnsigned(symbolDatabase->getVariableFromVarId(tok->next()->varId()))) {
+                udivError(tok->next(), false);
             }
-        }
+        } else if (Token::Match(tok->next(), "%num% / %var%")) {
+            if (tok->strAt(1)[0] == '-' && isUnsigned(symbolDatabase->getVariableFromVarId(tok->tokAt(3)->varId()))) {
+                udivError(tok->next(), false);
+            }
+        } else if (Token::Match(tok->next(), "%var% / %var%") && _settings->inconclusive && style && !ifTok) {
+            const Variable* var1 = symbolDatabase->getVariableFromVarId(tok->next()->varId());
+            const Variable* var2 = symbolDatabase->getVariableFromVarId(tok->tokAt(3)->varId());
+            if ((isUnsigned(var1) && isSigned(var2)) || (isUnsigned(var2) && isSigned(var1))) {
+                udivError(tok->next(), true);
+            }
+        } else if (!ifTok && Token::simpleMatch(tok, "if ("))
+            ifTok = tok->next()->link()->next()->link();
+        else if (ifTok == tok)
+            ifTok = 0;
     }
 }
 
-void CheckOther::udivError(const Token *tok)
+void CheckOther::udivError(const Token *tok, bool inconclusive)
 {
-    reportError(tok, Severity::error, "udivError", "Unsigned division. The result will be wrong.");
+    if (inconclusive)
+        reportError(tok, Severity::warning, "udivError", "Division with signed and unsigned operators. The result might be wrong.");
+    else
+        reportError(tok, Severity::error, "udivError", "Unsigned division. The result will be wrong.");
 }
 
 //---------------------------------------------------------------------------
@@ -1747,8 +1763,7 @@ void CheckOther::checkVariableScope()
             continue;
 
         // Walk through all tokens..
-        unsigned int indentlevel = 0;
-        for (const Token *tok = scope->classStart; tok; tok = tok->next()) {
+        for (const Token *tok = scope->classStart; tok && tok != scope->classEnd; tok = tok->next()) {
             // Skip function local class and struct declarations..
             if ((tok->str() == "class") || (tok->str() == "struct") || (tok->str() == "union")) {
                 for (const Token *tok2 = tok; tok2; tok2 = tok2->next()) {
@@ -1764,15 +1779,7 @@ void CheckOther::checkVariableScope()
                     break;
             }
 
-            else if (tok->str() == "{") {
-                ++indentlevel;
-            } else if (tok->str() == "}") {
-                if (!indentlevel)
-                    break;
-                --indentlevel;
-            }
-
-            if (indentlevel > 0 && Token::Match(tok, "[{};]")) {
+            if (Token::Match(tok, "[{};]")) {
                 // First token of statement..
                 const Token *tok1 = tok->next();
                 if (! tok1)
@@ -1930,8 +1937,8 @@ void CheckOther::checkConstantFunctionParameter()
     const SymbolDatabase * const symbolDatabase = _tokenizer->getSymbolDatabase();
 
     for (std::list<Scope>::const_iterator i = symbolDatabase->scopeList.begin(); i != symbolDatabase->scopeList.end(); ++i) {
-        for (std::list<Function>::const_iterator j = i->functionList.begin(); j != i->functionList.end(); ++j) {
-            for (const Token* tok = j->arg->next(); tok; tok = tok->nextArgument()) {
+        if (i->type == Scope::eFunction && i->function) {
+            for (const Token* tok = i->function->arg->next(); tok; tok = tok->nextArgument()) {
                 // TODO: False negatives. This pattern only checks for string.
                 //       Investigate if there are other classes in the std
                 //       namespace and add them to the pattern. There are
@@ -1965,9 +1972,14 @@ void CheckOther::passedByValueError(const Token *tok, const std::string &parname
 //---------------------------------------------------------------------------
 // Check usage of char variables..
 //---------------------------------------------------------------------------
+static bool isChar(const Variable* var)
+{
+    return(var && !var->isPointer() && !var->isArray() && (var->typeEndToken()->str() == "char" || var->typeEndToken()->previous()->str() == "char"));
+}
+
 static bool isSignedChar(const Variable* var)
 {
-    return(var && var->nameToken()->previous()->str() == "char" && !var->nameToken()->previous()->isUnsigned() && var->nameToken()->next()->str() != "[");
+    return(isChar(var) && !var->typeEndToken()->isUnsigned() && !var->typeEndToken()->previous()->isUnsigned());
 }
 
 void CheckOther::checkCharVariable()
@@ -2004,7 +2016,7 @@ void CheckOther::checkCharVariable()
                 continue;
 
             // This is an error..
-            charBitOpError(tok);
+            charBitOpError(tok->tokAt(4));
         }
 
         else if (Token::Match(tok, "[;{}] %var% = %any% [&|] ( * %var% ) ;")) {
@@ -2021,7 +2033,7 @@ void CheckOther::checkCharVariable()
                 continue;
 
             // This is an error..
-            charBitOpError(tok);
+            charBitOpError(tok->tokAt(4));
         }
     }
 }
@@ -2101,10 +2113,6 @@ void CheckOther::constStatementError(const Token *tok, const std::string &type)
 //---------------------------------------------------------------------------
 // str plus char
 //---------------------------------------------------------------------------
-static bool isChar(const Variable* var)
-{
-    return(var && var->nameToken()->previous()->str() == "char" && var->nameToken()->next()->str() != "[");
-}
 
 void CheckOther::strPlusChar()
 {
@@ -2168,7 +2176,9 @@ void CheckOther::checkMathFunctions()
             continue;
 
         for (const Token *tok = scope->classStart; tok && tok != scope->classEnd; tok = tok->next()) {
-            if (tok->varId() == 0 && Token::Match(tok, "log|log10 ( %num% )")) {
+            if (tok->varId())
+                continue;
+            if (Token::Match(tok, "log|log10 ( %num% )")) {
                 bool isNegative = MathLib::isNegative(tok->strAt(2));
                 bool isInt = MathLib::isInt(tok->strAt(2));
                 bool isFloat = MathLib::isFloat(tok->strAt(2));
@@ -2184,33 +2194,29 @@ void CheckOther::checkMathFunctions()
             }
 
             // acos( x ), asin( x )  where x is defined for intervall [-1,+1], but not beyound
-            else if (tok->varId() == 0 &&
-                     Token::Match(tok, "acos|asin ( %num% )") &&
+            else if (Token::Match(tok, "acos|asin ( %num% )") &&
                      std::fabs(MathLib::toDoubleNumber(tok->strAt(2))) > 1.0) {
                 mathfunctionCallError(tok);
             }
             // sqrt( x ): if x is negative the result is undefined
-            else if (tok->varId() == 0 &&
-                     Token::Match(tok, "sqrt|sqrtf|sqrtl ( %num% )") &&
+            else if (Token::Match(tok, "sqrt|sqrtf|sqrtl ( %num% )") &&
                      MathLib::isNegative(tok->strAt(2))) {
                 mathfunctionCallError(tok);
             }
             // atan2 ( x , y): x and y can not be zero, because this is mathematically not defined
-            else if (tok->varId() == 0 &&
-                     Token::Match(tok, "atan2 ( %num% , %num% )") &&
+            else if (Token::Match(tok, "atan2 ( %num% , %num% )") &&
                      MathLib::isNullValue(tok->strAt(2)) &&
                      MathLib::isNullValue(tok->strAt(4))) {
                 mathfunctionCallError(tok, 2);
             }
             // fmod ( x , y) If y is zero, then either a range error will occur or the function will return zero (implementation-defined).
-            else if (tok->varId() == 0 &&
-                     Token::Match(tok, "fmod ( %num% , %num% )") &&
-                     MathLib::isNullValue(tok->strAt(4))) {
-                mathfunctionCallError(tok, 2);
+            else if (Token::Match(tok, "fmod ( %any%")) {
+                const Token* nextArg = tok->tokAt(2)->nextArgument();
+                if (nextArg && nextArg->isNumber() && MathLib::isNullValue(nextArg->str()))
+                    mathfunctionCallError(tok, 2);
             }
             // pow ( x , y) If x is zero, and y is negative --> division by zero
-            else if (tok->varId() == 0 &&
-                     Token::Match(tok, "pow ( %num% , %num% )") &&
+            else if (Token::Match(tok, "pow ( %num% , %num% )") &&
                      MathLib::isNullValue(tok->strAt(2))  &&
                      MathLib::isNegative(tok->strAt(4))) {
                 mathfunctionCallError(tok, 2);
@@ -2278,24 +2284,12 @@ void CheckOther::checkMisusedScopedObject()
 
     const SymbolDatabase * const symbolDatabase = _tokenizer->getSymbolDatabase();
 
-    std::list<Scope>::const_iterator scope;
-
-    for (scope = symbolDatabase->scopeList.begin(); scope != symbolDatabase->scopeList.end(); ++scope) {
+    for (std::list<Scope>::const_iterator scope = symbolDatabase->scopeList.begin(); scope != symbolDatabase->scopeList.end(); ++scope) {
         // only check functions
         if (scope->type != Scope::eFunction)
             continue;
 
-        unsigned int depth = 0;
-
-        for (const Token *tok = scope->classStart; tok; tok = tok->next()) {
-            if (tok->str() == "{") {
-                ++depth;
-            } else if (tok->str() == "}") {
-                if (depth <= 1)
-                    break;
-                --depth;
-            }
-
+        for (const Token *tok = scope->classStart; tok && tok != scope->classEnd; tok = tok->next()) {
             if (Token::Match(tok, "[;{}] %var% (")
                 && Token::simpleMatch(tok->linkAt(2), ") ;")
                 && symbolDatabase->isClassOrStruct(tok->next()->str())
@@ -2484,6 +2478,106 @@ void CheckOther::checkDuplicateBranch()
                 duplicateBranchError(tok, tok1->tokAt(2));
         }
     }
+}
+
+//-----------------------------------------------------------------------------
+// Check for double free
+// free(p); free(p);
+//-----------------------------------------------------------------------------
+void CheckOther::checkDoubleFree()
+{
+    std::set<unsigned int> freedVariables;
+    std::set<unsigned int> closeDirVariables;
+
+    for (const Token* tok = _tokenizer->tokens(); tok; tok = tok->next()) {
+
+        // Keep track of any variables passed to "free()", "g_free()" or "closedir()",
+        // and report an error if the same variable is passed twice.
+        if (Token::Match(tok, "free|g_free|closedir ( %var% )")) {
+            unsigned int var = tok->tokAt(2)->varId();
+            if (var) {
+                if (Token::Match(tok, "free|g_free")) {
+                    if (freedVariables.find(var) != freedVariables.end())
+                        doubleFreeError(tok, tok->tokAt(2)->str());
+                    else
+                        freedVariables.insert(var);
+                } else if (tok->str() == "closedir") {
+                    if (closeDirVariables.find(var) != closeDirVariables.end())
+                        doubleCloseDirError(tok, tok->tokAt(2)->str());
+                    else
+                        closeDirVariables.insert(var);
+                }
+            }
+        }
+
+        // Keep track of any variables operated on by "delete" or "delete[]"
+        // and report an error if the same variable is delete'd twice.
+        else if (Token::Match(tok, "delete %var% ;") || Token::Match(tok, "delete [ ] %var% ;")) {
+            int varIdx = (tok->strAt(1) == "[") ? 3 : 1;
+            unsigned int var = tok->tokAt(varIdx)->varId();
+            if (var) {
+                if (freedVariables.find(var) != freedVariables.end())
+                    doubleFreeError(tok, tok->tokAt(varIdx)->str());
+                else
+                    freedVariables.insert(var);
+            }
+        }
+
+        // If this scope doesn't return, clear the set of previously freed variables
+        else if (tok->str() == "}" && _tokenizer->IsScopeNoReturn(tok)) {
+            freedVariables.clear();
+            closeDirVariables.clear();
+        }
+
+
+        // If a variable is passed to a function, remove it from the set of previously freed variables
+        else if (Token::Match(tok, "%var% (") && !Token::Match(tok, "printf|sprintf|snprintf|fprintf|if|while")) {
+
+            // If this is a new function definition, clear all variables
+            if (Token::simpleMatch(tok->next()->link(), ") {")) {
+                freedVariables.clear();
+                closeDirVariables.clear();
+            }
+            // If it is a function call, then clear those variables in its argument list
+            else if (Token::simpleMatch(tok->next()->link(), ") ;")) {
+                for (const Token* tok2 = tok->tokAt(2); tok2 != tok->linkAt(1); tok2 = tok2->next()) {
+                    if (Token::Match(tok2, "%var%")) {
+                        unsigned int var = tok2->varId();
+                        if (var) {
+                            freedVariables.erase(var);
+                            closeDirVariables.erase(var);
+                        }
+                    }
+                }
+            }
+        }
+
+        // If a pointer is assigned a new value, remove it from the set of previously freed variables
+        else if (Token::Match(tok, "%var% =")) {
+            unsigned int var = tok->varId();
+            if (var) {
+                freedVariables.erase(var);
+                closeDirVariables.erase(var);
+            }
+        }
+
+        // Any control statements in-between delete, free() or closedir() statements
+        // makes it unclear whether any subsequent statements would be redundant.
+        if (Token::Match(tok, "else|break|continue|goto|return")) {
+            freedVariables.clear();
+            closeDirVariables.clear();
+        }
+    }
+}
+
+void CheckOther::doubleFreeError(const Token *tok, const std::string &varname)
+{
+    reportError(tok, Severity::error, "doubleFree", "Memory pointed to by '" + varname +"' is freed twice.");
+}
+
+void CheckOther::doubleCloseDirError(const Token *tok, const std::string &varname)
+{
+    reportError(tok, Severity::error, "doubleCloseDir", "Directory handle '" + varname +"' closed twice.");
 }
 
 void CheckOther::duplicateBranchError(const Token *tok1, const Token *tok2)

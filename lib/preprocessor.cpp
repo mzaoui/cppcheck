@@ -1422,7 +1422,7 @@ std::string Preprocessor::getcode(const std::string &filedata, const std::string
     std::stack<unsigned int> lineNumbers;
     std::istringstream istr(filedata);
     std::string line;
-    while (getline(istr, line)) {
+    while (std::getline(istr, line)) {
         ++lineno;
 
         if (line.compare(0, 11, "#pragma asm") == 0) {
@@ -1494,6 +1494,11 @@ std::string Preprocessor::getcode(const std::string &filedata, const std::string
                 } else
                     cfgmap[line.substr(8, pos - 8)] = "";
             }
+        }
+
+        else if (line.compare(0, 7, "#undef ") == 0) {
+            const std::string name(line.substr(7));
+            cfgmap.erase(name);
         }
 
         else if (!emptymatch && line.compare(0, 7, "#elif !") == 0) {
@@ -1767,21 +1772,33 @@ std::string Preprocessor::handleIncludes(const std::string &code, const std::str
                 suppressCurrentCodePath = false;
             }
         } else if (indentmatch == indent) {
-            if (!suppressCurrentCodePath && line.compare(0,8,"#define ")==0) {
-                // no value
-                std::string tag = line.substr(8);
-                if (line.find_first_of("( ", 8) == std::string::npos)
-                    defs[tag] = "";
+            if (!suppressCurrentCodePath && line.compare(0, 8, "#define ") == 0) {
+                const unsigned int endOfDefine = 8;
+                std::string::size_type endOfTag = line.find_first_of("( ", endOfDefine);
+                std::string tag;
 
-                // define value
-                else if (line.find("(") == std::string::npos) {
-                    const std::string::size_type pos = line.find(" ", 8);
-                    tag = line.substr(8,pos-8);
-                    const std::string value(line.substr(pos+1));
-                    if (defs.find(value) != defs.end())
-                        defs[tag] = defs[value];
-                    else
-                        defs[tag] = value;
+                // define a symbol
+                if (endOfTag == std::string::npos) {
+                    tag = line.substr(endOfDefine);
+                    defs[tag] = "";
+                } else {
+                    tag = line.substr(endOfDefine, endOfTag-endOfDefine);
+
+                    // define a function-macro
+                    if (line[endOfTag] == '(') {
+                        defs[tag] = "";
+                    }
+                    // define value
+                    else {
+                        ++endOfTag;
+
+                        const std::string& value = line.substr(endOfTag, line.size()-endOfTag);
+
+                        if (defs.find(value) != defs.end())
+                            defs[tag] = defs[value];
+                        else
+                            defs[tag] = value;
+                    }
                 }
 
                 if (undefs.find(tag) != undefs.end()) {
@@ -2546,7 +2563,7 @@ std::string Preprocessor::expandMacros(const std::string &code, std::string file
                         std::map<std::string, PreprocessorMacro *>::iterator it;
                         for (it = macros.begin(); it != macros.end(); ++it)
                             delete it->second;
-
+                        macros.clear();
                         return "";
                     }
 
@@ -2628,7 +2645,7 @@ std::string Preprocessor::expandMacros(const std::string &code, std::string file
                         std::map<std::string, PreprocessorMacro *>::iterator iter;
                         for (iter = macros.begin(); iter != macros.end(); ++iter)
                             delete iter->second;
-
+                        macros.clear();
                         return "";
                     }
 
@@ -2681,6 +2698,7 @@ std::string Preprocessor::expandMacros(const std::string &code, std::string file
 
     for (std::map<std::string, PreprocessorMacro *>::iterator it = macros.begin(); it != macros.end(); ++it)
         delete it->second;
+    macros.clear();
 
     return ostr.str();
 }
